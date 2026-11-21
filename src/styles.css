@@ -1,0 +1,35 @@
+:root{--ink:#14231f;--paper:#f4f7f5;--card:#fff;--line:#d3ddd8;--accent:#0f6b4f;--gold:#e8b230;--muted:#5d6f68}
+*{box-sizing:border-box}html{color-scheme:light}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "Noto Sans Ethiopic",system-ui,sans-serif}
+.am{font-family:"Noto Serif Ethiopic","Noto Sans Ethiopic",serif;line-height:1.7}
+h1{font-size:2.4rem;margin:.2em 0}h2{font-size:1.1rem;margin:2rem 0 .5rem}
+main{max-width:860px;margin:0 auto;padding:1rem}
+button,input,textarea{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:.45rem .8rem;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.link{border:0;background:none;color:var(--accent);padding:.2rem}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+input,textarea{border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem;background:var(--card);width:100%}
+.login{max-width:380px;margin-top:12vh}.login form{display:grid;gap:.6rem;margin:1rem 0}
+.note{color:var(--accent)}.muted{color:var(--muted)}
+header{display:flex;align-items:center;justify-content:space-between;gap:.6rem}
+.drop{display:grid;gap:.2rem;border:2px dashed var(--accent);border-radius:14px;padding:2rem 1rem;text-align:center;cursor:pointer;background:var(--card);margin-top:1rem}
+.drop input{display:none}.drop span{color:var(--muted);font-size:.9rem}.drop.busy{border-style:solid;opacity:.8}.drop.small{padding:1rem}
+.plist{list-style:none;padding:0;display:grid;gap:.5rem}
+.plist button{width:100%;display:flex;justify-content:space-between;text-align:left;padding:.8rem 1rem}
+.stage{position:relative;background:#000;border-radius:12px;overflow:hidden}.stage video{width:100%;display:block;max-height:60vh}
+.stage audio{width:100%;display:block;background:#fff}
+.overlay{position:absolute;left:5%;right:5%;bottom:12%;margin:0;text-align:center;color:#fff;font-size:clamp(1rem,3.5vw,1.6rem);font-weight:700;text-shadow:0 0 4px #000,0 0 8px #000;pointer-events:none}
+.bar{display:flex;flex-wrap:wrap;gap:.5rem;margin:.8rem 0}
+.title{font-size:1.2rem;font-weight:700;flex:1;min-width:0}
+.cues{list-style:none;padding:0;display:grid;gap:.6rem}
+.cues li{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.6rem}
+.cues li.on{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}
+.times{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.4rem}.times input{width:5.5rem}
+textarea{font-size:1.15rem;resize:vertical}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.field{display:grid;gap:.3rem;margin-top:1rem;color:var(--muted);font-size:.9rem}
+.overlay{top:auto;cursor:grab;touch-action:none;pointer-events:auto;transform:translateY(-50%);white-space:pre-line;bottom:auto}
+.range{display:flex;align-items:center;gap:.5rem;font-size:.9rem}.range input{width:9rem;padding:0}.range output{min-width:3ch}
+.small{font-size:.85rem}.dl strong{margin-right:.3rem}.times input{width:5rem}
