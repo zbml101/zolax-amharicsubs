@@ -33,3 +33,4 @@ textarea{font-size:1.15rem;resize:vertical}
 .overlay{top:auto;cursor:grab;touch-action:none;pointer-events:auto;transform:translateY(-50%);white-space:pre-line;bottom:auto}
 .range{display:flex;align-items:center;gap:.5rem;font-size:.9rem}.range input{width:9rem;padding:0}.range output{min-width:3ch}
 .small{font-size:.85rem}.dl strong{margin-right:.3rem}.times input{width:5rem}
+fieldset.field{border:1px solid var(--line);border-radius:10px;padding:.6rem;margin:1rem 0 0}fieldset.field legend{padding:0 .3rem}

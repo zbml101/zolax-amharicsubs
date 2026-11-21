@@ -1,4 +1,4 @@
-// Decode any audio/video file in the browser -> 16 kHz mono WAV chunks (~50 s each),
+// Decode any audio/video file in the browser -> 16 kHz mono WAV chunks (~2 min each),
 // cut at the quietest moment so words are not split in half.
 export async function toChunks(file) {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -7,7 +7,7 @@ export async function toChunks(file) {
   const off = new OfflineAudioContext(1, Math.ceil(buf.duration * rate), rate);
   const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
   const data = (await off.startRendering()).getChannelData(0);
-  const cuts = [0], target = 50 * rate, win = 6 * rate, fr = Math.floor(rate * 0.05);
+  const cuts = [0], target = 120 * rate, win = 6 * rate, fr = Math.floor(rate * 0.05);
   while (data.length - cuts[cuts.length - 1] > target + 3 * rate) {
     const end = cuts[cuts.length - 1] + target; let best = end, min = Infinity;
     for (let i = end - win; i < end; i += fr) {

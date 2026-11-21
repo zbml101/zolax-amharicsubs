@@ -1,39 +1,39 @@
 # Amharic Subtitles (ንዑስ ጽሑፍ)
 
-React + Vite app. Supabase = auth, database, transcription Edge Function. GitHub = code. Cloudflare Pages = hosting, DNS, domain.
+React + Vite web app. Supabase = login + database. GitHub = code. Cloudflare Pages = hosting, DNS, domain.
+Speech recognition = a free, self-hosted Amharic model (`asr-server/`). No paid services.
 
-## 1. Supabase
-1. Create a project. In **SQL Editor**, run `supabase/schema.sql`.
-2. Google Cloud (speech model): create a project, enable **Cloud Speech-to-Text API**, create a service account with role **Cloud Speech Client**, and download its JSON key.
-3. Install the Supabase CLI, then:
-   ```
-   supabase login && supabase link --project-ref YOUR_REF
-   supabase secrets set GOOGLE_SA_JSON="$(cat key.json)" GOOGLE_REGION=asia-southeast1
-   supabase functions deploy transcribe
-   ```
-4. **Authentication > URL Configuration**: set Site URL to `https://yourdomain.com` and add `http://localhost:5173` to Redirect URLs.
+## 1. Supabase (free plan)
+1. Create a project. In **SQL Editor**, run `supabase/schema.sql`. (Older install? Run `supabase/migrations/add_style.sql` instead.)
+2. **Authentication > URL Configuration**: Site URL = `https://yourdomain.com`; add `http://localhost:5173` to Redirect URLs.
 
-## 2. Run locally
+## 2. The Amharic speech server (free GPU)
+Uses the open model `BuzzASR/amharic` (Whisper large-v3 fine-tuned for Amharic) plus Silero VAD for subtitle timing.
+1. Open Google Colab, upload `asr-server/amharic_asr_colab.ipynb`, set **Runtime > T4 GPU**, run all cells.
+2. Copy the `https://….trycloudflare.com` address it prints.
+3. In the web app, paste it under "Transcription server" and click **Test connection**.
+Colab sessions end after a while: rerun the notebook and paste the new address. Kaggle notebooks (free GPU) or any PC/server with a GPU can run `asr-server/server.py` the same way (`pip install -r asr-server/requirements.txt && uvicorn server:app --port 8000`).
+Set a password with `ASR_TOKEN` if you do not want strangers using your server. Without a GPU the model is very slow.
+
+## 3. Run locally
 ```
-cp .env.example .env   # fill in URL + anon key (Settings > API)
+cp .env.example .env   # Supabase URL + anon key (Settings > API)
 npm install && npm run dev
 ```
 
-## 3. GitHub
+## 4. GitHub
 ```
 git init && git add . && git commit -m "Initial commit"
 git remote add origin git@github.com:YOU/amharic-subs.git && git push -u origin main
 ```
 
-## 4. Cloudflare Pages + domain
-1. Cloudflare dashboard > **Workers & Pages > Create > Pages > Connect to Git**, pick the repo.
+## 5. Cloudflare Pages + domain
+1. Workers & Pages > Create > Pages > Connect to Git, pick the repo.
 2. Build command `npm run build`, output directory `dist`.
-3. Add env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
-4. After the first deploy: **Custom domains > Set up a domain**. If the domain's DNS is on Cloudflare, the records are created for you.
+3. Environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (optionally `VITE_ASR_URL`).
+4. Custom domains > Set up a domain. If DNS is already on Cloudflare, records are created for you.
 
 ## Notes
-- Transcription uses Google Speech-to-Text v2, model `chirp_2`, `am-ET`, with word timestamps grouped into subtitle lines. Edit `supabase/functions/transcribe/index.ts` to change the engine.
-- If you created the table with the first version, run `supabase/migrations/add_style.sql`.
 - Downloads: SRT (top/middle/bottom only), VTT and ASS (exact position), Text.
-- Audio is decoded in the browser and sent in ~50-second chunks cut at pauses. Media files are not uploaded to storage.
-- Fonts: Noto Sans Ethiopic (interface) and Noto Serif Ethiopic (subtitle text).
+- Media files stay on the user's device; only subtitles and positions are saved.
+- Variables starting with `VITE_` are public in the built site. Do not treat `VITE_ASR_TOKEN` as a secret.

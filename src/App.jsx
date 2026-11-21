@@ -3,6 +3,8 @@ import {supabase} from "./supabase";
 import {toChunks} from "./audio";
 import {toSrt, toVtt, toAss, toTxt, download} from "./subs";
 
+const ls = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+
 export default function App() {
   const [session, setSession] = useState(null), [ready, setReady] = useState(false);
   useEffect(() => {
@@ -38,19 +40,22 @@ function Login() {
 
 function Workspace() {
   const [projects, setProjects] = useState([]), [open, setOpen] = useState(null), [media, setMedia] = useState(null);
-  const [status, setStatus] = useState(""), [busy, setBusy] = useState(false), [hints, setHints] = useState("");
+  const [status, setStatus] = useState(""), [busy, setBusy] = useState(false), [url, setUrl] = useState(ls("asr_url") || import.meta.env.VITE_ASR_URL || ""), [token, setToken] = useState(ls("asr_token") || import.meta.env.VITE_ASR_TOKEN || ""), [ping, setPing] = useState("");
+  const keep = (k, v, set) => { set(v); setPing(""); try { localStorage.setItem(k, v); } catch {} };
+  const test = async () => { setPing("Checking…"); try { const r = await fetch(url.replace(/\/$/, "") + "/health"); const j = await r.json(); setPing(j.ok ? "Ready (" + j.device + ")" : "Not ready"); } catch { setPing("Not reachable yet. If the server just started, wait a minute and try again."); } };
   const load = async () => { const {data} = await supabase.from("projects").select("id,title,updated_at").order("updated_at", {ascending: false}); setProjects(data || []); };
   useEffect(() => { load(); }, []);
 
   const create = async (file) => {
-    if (!file) return; setBusy(true); setStatus("Preparing audio…");
+    if (!file) return; if (!url) { setStatus("Enter the transcription server address first."); return; } setBusy(true); setStatus("Preparing audio…");
     try {
       const chunks = await toChunks(file), cues = [];
       for (let i = 0; i < chunks.length; i++) {
         setStatus(`Transcribing part ${i + 1} of ${chunks.length}…`);
-        const fd = new FormData(); fd.append("file", chunks[i].blob); fd.append("hints", hints);
-        const {data, error} = await supabase.functions.invoke("transcribe", {body: fd});
-        if (error || data?.error) throw new Error(error?.message || data.error.message || JSON.stringify(data.error));
+        const fd = new FormData(); fd.append("file", chunks[i].blob, "a.wav");
+        const r = await fetch(url.replace(/\/$/, "") + "/transcribe", {method: "POST", headers: token ? {Authorization: "Bearer " + token} : {}, body: fd});
+        if (!r.ok) throw new Error("Server answered " + r.status);
+        const data = await r.json();
         data.segments.forEach((s) => cues.push({start: +(s.start + chunks[i].offset).toFixed(2), end: +(s.end + chunks[i].offset).toFixed(2), text: s.text}));
       }
       const {data: row, error} = await supabase.from("projects").insert({title: file.name.replace(/\.[^.]+$/, ""), cues}).select().single();
@@ -64,8 +69,10 @@ function Workspace() {
   return (
     <main className="home">
       <header><h1 className="am">ንዑስ ጽሑፍ</h1><button className="link" onClick={() => supabase.auth.signOut()}>Sign out</button></header>
-      <label className="field">Names and special words (optional, separated by commas). They help the speech model spell them correctly.
-        <input value={hints} onChange={(e) => setHints(e.target.value)} placeholder="ዶ/ር አበበ, ባሕር ዳር, ZolaxTech" disabled={busy}/></label>
+      <fieldset className="field"><legend>Transcription server</legend>
+        <input value={url} onChange={(e) => keep("asr_url", e.target.value, setUrl)} placeholder="https://xxxx.trycloudflare.com" disabled={busy}/>
+        <input type="password" value={token} onChange={(e) => keep("asr_token", e.target.value, setToken)} placeholder="Access token (only if you set one)" disabled={busy}/>
+        <div><button type="button" onClick={test} disabled={busy || !url}>Test connection</button> {ping && <span className="note">{ping}</span>}</div></fieldset>
       <label className={"drop" + (busy ? " busy" : "")}>
         <input type="file" accept="video/*,audio/*" disabled={busy} onChange={(e) => create(e.target.files[0])}/>
         <strong>{busy ? status : "Choose a video or audio file"}</strong>
