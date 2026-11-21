@@ -6,3 +6,7 @@ silero-vad
 transformers
 accelerate
 torch
+huggingface_hub
+pyctcdecode
+# optional, enables the language model (better accuracy):
+https://github.com/kpu/kenlm/archive/master.zip

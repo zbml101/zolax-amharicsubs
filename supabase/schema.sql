@@ -12,3 +12,7 @@ create policy "owner only" on public.projects for all
 
 -- Subtitle look & default position (percent from top of the video)
 alter table public.projects add column style jsonb not null default '{"y":85,"size":100}';
+
+-- Newer Supabase projects do not grant API access to new tables automatically.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.projects to authenticated;

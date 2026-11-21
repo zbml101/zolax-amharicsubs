@@ -34,3 +34,10 @@ textarea{font-size:1.15rem;resize:vertical}
 .range{display:flex;align-items:center;gap:.5rem;font-size:.9rem}.range input{width:9rem;padding:0}.range output{min-width:3ch}
 .small{font-size:.85rem}.dl strong{margin-right:.3rem}.times input{width:5rem}
 fieldset.field{border:1px solid var(--line);border-radius:10px;padding:.6rem;margin:1rem 0 0}fieldset.field legend{padding:0 .3rem}
+.overlay{left:50%;right:auto;width:max-content;max-width:90%;transform:translate(-50%,-50%);padding:.15em .55em;border-radius:.35em;line-height:1.5;font-weight:700;text-shadow:none;paint-order:stroke fill;-webkit-text-stroke:.14em rgba(0,0,0,.85)}
+.overlay .w{transition:color .06s}
+select{font:inherit;padding:.4rem .5rem;border:1px solid var(--line);border-radius:8px;background:#fff}
+input[type=color],input[type=checkbox]{width:auto;padding:0}input[type=color]{height:30px;width:34px;border:0;background:none}
+.sws{display:flex;align-items:center;gap:.35rem;font-size:.9rem}
+.sw{width:28px;height:28px;border-radius:50%;padding:0;border:2px solid var(--line)}.sw[aria-pressed=true]{outline:3px solid var(--ink);outline-offset:1px}
+.bar.style{align-items:center;gap:.9rem}

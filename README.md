@@ -8,12 +8,12 @@ Speech recognition = a free, self-hosted Amharic model (`asr-server/`). No paid 
 2. **Authentication > URL Configuration**: Site URL = `https://yourdomain.com`; add `http://localhost:5173` to Redirect URLs.
 
 ## 2. The Amharic speech server (free GPU)
-Uses the open model `BuzzASR/amharic` (Whisper large-v3 fine-tuned for Amharic) plus Silero VAD for subtitle timing.
+Uses the open model `snapwre/hohe-asr-amharic` (CC BY 4.0, trained on 880 hours of Amharic, with a 5-gram language model) plus Silero VAD for subtitle timing. Credit: Chapi and the Dataset.ET contributors.
 1. Open Google Colab, upload `asr-server/amharic_asr_colab.ipynb`, set **Runtime > T4 GPU**, run all cells.
 2. Copy the `https://….trycloudflare.com` address it prints.
 3. In the web app, paste it under "Transcription server" and click **Test connection**.
 Colab sessions end after a while: rerun the notebook and paste the new address. Kaggle notebooks (free GPU) or any PC/server with a GPU can run `asr-server/server.py` the same way (`pip install -r asr-server/requirements.txt && uvicorn server:app --port 8000`).
-Set a password with `ASR_TOKEN` if you do not want strangers using your server. Without a GPU the model is very slow.
+Set a password with `ASR_TOKEN` if you do not want strangers using your server. Without a GPU it is slower but can work for short clips. To try another model, set `MODEL_ID` (it must be a CTC model with the same file layout).
 
 ## 3. Run locally
 ```
