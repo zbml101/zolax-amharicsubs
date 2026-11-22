@@ -34,6 +34,8 @@ git remote add origin git@github.com:YOU/amharic-subs.git && git push -u origin 
 4. Custom domains > Set up a domain. If DNS is already on Cloudflare, records are created for you.
 
 ## Notes
+- Editor: karaoke word colours, font/colour/position controls, split and merge lines, find and replace, autosave, and project delete.
+- "Create video" records the preview in the browser (real time) and downloads an MP4 or WebM with the subtitles burned in. No server needed.
 - Downloads: SRT (top/middle/bottom only), VTT and ASS (exact position), Text.
 - Media files stay on the user's device; only subtitles and positions are saved.
 - Variables starting with `VITE_` are public in the built site. Do not treat `VITE_ASR_TOKEN` as a secret.

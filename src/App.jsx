@@ -1,7 +1,8 @@
 import {Fragment, memo, useCallback, useEffect, useRef, useState} from "react";
 import {supabase} from "./supabase";
 import {toChunks} from "./audio";
-import {toSrt, toVtt, toAss, toTxt, download, wordsOf, split, DEF_STYLE} from "./subs";
+import {toSrt, toVtt, toAss, toTxt, download, downloadBlob, wordsOf, split, DEF_STYLE} from "./subs";
+import {burnVideo} from "./burn";
 
 const ls = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 
@@ -83,8 +84,11 @@ function Workspace() {
       <h2>Your projects</h2>
       {projects.length === 0 && <p className="muted">No projects yet. Upload a file above to make your first one.</p>}
       <ul className="plist">{projects.map((p) => (
-        <li key={p.id}><button onClick={async () => { const {data} = await supabase.from("projects").select("*").eq("id", p.id).single(); setOpen(data); }}>
-          <span className="am">{p.title}</span><small>{new Date(p.updated_at).toLocaleDateString()}</small></button></li>))}</ul>
+        <li key={p.id} className="prow">
+          <button className="open" onClick={async () => { const {data} = await supabase.from("projects").select("*").eq("id", p.id).single(); setOpen(data); }}>
+            <span className="am">{p.title}</span><small>{new Date(p.updated_at).toLocaleDateString()}</small></button>
+          <button className="danger" aria-label={"Delete " + p.title} onClick={async () => { if (!confirm(`Delete "${p.title}"? This cannot be undone.`)) return; await supabase.from("projects").delete().eq("id", p.id); load(); }}>Delete</button>
+        </li>))}</ul>
     </main>
   );
 }
@@ -98,14 +102,16 @@ function Swatches({label, list, value, onPick}) {
     <input type="color" value={value} onChange={(e) => onPick(e.target.value)} aria-label={label + " custom"}/></div>;
 }
 
-const CueRow = memo(function CueRow({c, i, on, hasMedia, font, defY, edit, seek, remove}) {
+const CueRow = memo(function CueRow({c, i, on, hasMedia, font, defY, edit, seek, remove, splitAt, merge}) {
   return (
-    <li className={on ? "on" : ""}>
+    <li id={"cue-" + i} className={on ? "on" : ""}>
       <div className="times">
         <input type="number" step="0.1" value={c.start} onChange={(e) => edit(i, "start", +e.target.value)} aria-label="Start seconds"/>
         <input type="number" step="0.1" min="0" max="100" value={c.y ?? defY} onChange={(e) => edit(i, "y", +e.target.value)} aria-label="Position percent from top" title="Position %"/>
         <input type="number" step="0.1" value={c.end} onChange={(e) => edit(i, "end", +e.target.value)} aria-label="End seconds"/>
         <button onClick={() => seek(c.start)} disabled={!hasMedia}>Play</button>
+        <button onClick={() => splitAt(i)} title="Split at the current playback time (or the middle)">Split</button>
+        <button onClick={() => merge(i)} title="Join with the next line">Merge</button>
         {c.y != null && <button onClick={() => edit(i, "y", undefined)}>Reset position</button>}
         <button onClick={() => remove(i)}>Delete</button>
       </div>
@@ -117,7 +123,9 @@ const CueRow = memo(function CueRow({c, i, on, hasMedia, font, defY, edit, seek,
 function Editor({project, media, setMedia, onBack}) {
   const [title, setTitle] = useState(project.title), [cues, setCues] = useState(project.cues);
   const [style, setStyle] = useState({...DEF_STYLE, ...(project.style || {})}), [now, setNow] = useState(0), [saved, setSaved] = useState(true);
-  const el = useRef(null), url = useRef(null), stage = useRef(null), dragging = useRef(false);
+  const [fr, setFr] = useState({a: "", b: "", msg: ""}), [burn, setBurn] = useState(null);
+  const el = useRef(null), url = useRef(null), stage = useRef(null), dragging = useRef(false), nowRef = useRef(0), abort = useRef(null), saveRef = useRef(null);
+  nowRef.current = now;
   if (media && !url.current) url.current = URL.createObjectURL(media);
   const isVideo = media?.type.startsWith("video");
   const active = cues.findIndex((c) => now >= c.start && now < c.end);
@@ -136,12 +144,57 @@ function Editor({project, media, setMedia, onBack}) {
   }, []);
   const remove = useCallback((i) => { setCues((p) => p.filter((_, j) => j !== i)); setSaved(false); }, []);
   const seek = useCallback((s) => { if (el.current) { el.current.currentTime = s; el.current.play(); } }, []);
+  const splitAt = useCallback((i) => {
+    setCues((prev) => {
+      const c = prev[i], ws = wordsOf(c); if (ws.length < 2) return prev;
+      const t = nowRef.current; let k = ws.findIndex((w) => w.start >= t);
+      if (!(t > c.start && t < c.end && k > 0)) k = Math.ceil(ws.length / 2);
+      const A = {...c, end: +ws[k - 1].end.toFixed(2), text: ws.slice(0, k).map((w) => w.text).join(" "), words: ws.slice(0, k)};
+      const B = {...c, start: +ws[k].start.toFixed(2), text: ws.slice(k).map((w) => w.text).join(" "), words: ws.slice(k)};
+      return [...prev.slice(0, i), A, B, ...prev.slice(i + 1)];
+    });
+    setSaved(false);
+  }, []);
+  const merge = useCallback((i) => {
+    setCues((prev) => {
+      if (i >= prev.length - 1) return prev;
+      const a = prev[i], b = prev[i + 1];
+      return [...prev.slice(0, i), {...a, end: b.end, text: (a.text + " " + b.text).trim(), words: [...wordsOf(a), ...wordsOf(b)]}, ...prev.slice(i + 2)];
+    });
+    setSaved(false);
+  }, []);
   const setSt = (k, v) => { setStyle((s) => ({...s, [k]: v})); setSaved(false); };
   const addCue = () => { const s = +now.toFixed(2); setCues([...cues, {start: s, end: s + 2, text: ""}].sort((a, b) => a.start - b.start)); setSaved(false); };
   const save = async () => { await supabase.from("projects").update({title, cues, style, updated_at: new Date().toISOString()}).eq("id", project.id); setSaved(true); };
+  saveRef.current = save;
+  const replaceAll = () => {
+    if (!fr.a) return; let count = 0;
+    setCues((prev) => prev.map((c) => {
+      if (!c.text.includes(fr.a)) return c;
+      count += c.text.split(fr.a).length - 1; const text = c.text.split(fr.a).join(fr.b);
+      return {...c, text, words: c.words && split(text).length === c.words.length ? c.words : undefined};
+    }));
+    setSaved(false); setTimeout(() => setFr((f) => ({...f, msg: count ? `Replaced ${count}` : "Not found"})), 0);
+  };
+  const runBurn = async () => {
+    abort.current = new AbortController(); setBurn({p: 0});
+    try { const r = await burnVideo(media, cues, style, (p) => setBurn({p}), abort.current.signal); if (r) downloadBlob(`${title}-subtitled.${r.ext}`, r.blob); }
+    catch (e) { alert(e.message); }
+    setBurn(null);
+  };
   const drag = (e) => { if (!dragging.current || active < 0) return; const r = stage.current.getBoundingClientRect();
     edit(active, "y", Math.round(Math.min(95, Math.max(5, (e.clientY - r.top) / r.height * 100)))); };
   useEffect(() => { const h = (e) => { if (!saved) e.preventDefault(); }; window.addEventListener("beforeunload", h); return () => window.removeEventListener("beforeunload", h); }, [saved]);
+  // autosave 3 s after the last change
+  useEffect(() => { if (saved) return; const t = setTimeout(() => saveRef.current(), 3000); return () => clearTimeout(t); }, [cues, style, title, saved]);
+  // Ctrl/Cmd+S saves, Ctrl/Cmd+Enter plays or pauses
+  useEffect(() => { const h = (e) => { if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.key === "s") { e.preventDefault(); saveRef.current(); }
+    if (e.key === "Enter" && el.current) { e.preventDefault(); el.current.paused ? el.current.play() : el.current.pause(); } };
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, []);
+  // keep the current line in view while playing
+  useEffect(() => { if (active < 0 || !el.current || el.current.paused || ["TEXTAREA", "INPUT"].includes(document.activeElement?.tagName)) return;
+    document.getElementById("cue-" + active)?.scrollIntoView({block: "nearest", behavior: "smooth"}); }, [active]);
   // smooth clock so words change colour exactly when spoken
   useEffect(() => { let id, last = 0;
     const tick = () => { const m = el.current; if (m && !m.paused && Math.abs(m.currentTime - last) > 0.04) { last = m.currentTime; setNow(last); } id = requestAnimationFrame(tick); };
@@ -156,15 +209,15 @@ function Editor({project, media, setMedia, onBack}) {
         <input className="title am" value={title} onChange={(e) => { setTitle(e.target.value); setSaved(false); }}/>
         <button className="primary" onClick={save}>{saved ? "Saved" : "Save"}</button>
       </header>
+      {media ? <div className="stage" ref={stage}>
+        {isVideo ? <video ref={el} src={url.current} controls onTimeUpdate={(e) => setNow(e.target.currentTime)} onSeeked={(e) => setNow(e.target.currentTime)}/> : <audio ref={el} src={url.current} controls onTimeUpdate={(e) => setNow(e.target.currentTime)}/>}
+        {isVideo && cur && <p className="overlay" title="Drag to move this subtitle"
+          style={{top: (cur.y ?? style.y) + "%", fontSize: `calc(${style.size / 100} * clamp(1rem,3.5vw,1.6rem))`, fontFamily: `"${style.font}", serif`, color: style.base, background: style.bg ? "rgba(0,0,0,.6)" : "none"}}
+          onPointerDown={(e) => { dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId); }}
+          onPointerMove={drag} onPointerUp={() => { dragging.current = false; }}>
+          {wordsOf(cur).map((w, i) => <Fragment key={i}><span className="w" style={{color: now >= w.start ? style.hl : style.base}}>{w.text}</span>{" "}</Fragment>)}</p>}
+      </div> : <label className="drop small"><input type="file" accept="video/*,audio/*" onChange={(e) => setMedia(e.target.files[0])}/><strong>Attach the media file to preview</strong><span>Files stay on your device. Only subtitles are saved.</span></label>}
       <section className="player">
-        {media ? <div className="stage" ref={stage}>
-          {isVideo ? <video ref={el} src={url.current} controls onTimeUpdate={(e) => setNow(e.target.currentTime)} onSeeked={(e) => setNow(e.target.currentTime)}/> : <audio ref={el} src={url.current} controls onTimeUpdate={(e) => setNow(e.target.currentTime)}/>}
-          {isVideo && cur && <p className="overlay" title="Drag to move this subtitle"
-            style={{top: (cur.y ?? style.y) + "%", fontSize: `calc(${style.size / 100} * clamp(1rem,3.5vw,1.6rem))`, fontFamily: `"${style.font}", serif`, color: style.base, background: style.bg ? "rgba(0,0,0,.6)" : "none"}}
-            onPointerDown={(e) => { dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId); }}
-            onPointerMove={drag} onPointerUp={() => { dragging.current = false; }}>
-            {wordsOf(cur).map((w, i) => <Fragment key={i}><span className="w" style={{color: now >= w.start ? style.hl : style.base}}>{w.text}</span>{" "}</Fragment>)}</p>}
-        </div> : <label className="drop small"><input type="file" accept="video/*,audio/*" onChange={(e) => setMedia(e.target.files[0])}/><strong>Attach the media file to preview</strong><span>Files stay on your device. Only subtitles are saved.</span></label>}
         <div className="bar style">
           <label className="range">Font <select value={style.font} onChange={(e) => setSt("font", e.target.value)}>{FONTS.map((f) => <option key={f}>{f}</option>)}</select></label>
           <Swatches label="Spoken word" list={HL} value={style.hl} onPick={(v) => setSt("hl", v)}/>
@@ -175,7 +228,7 @@ function Editor({project, media, setMedia, onBack}) {
           <label className="range">Default position <input type="range" min="5" max="95" value={style.y} onChange={(e) => setSt("y", +e.target.value)}/><output>{style.y}%</output></label>
           <label className="range">Text size <input type="range" min="60" max="200" step="5" value={style.size} onChange={(e) => setSt("size", +e.target.value)}/><output>{style.size}%</output></label>
         </div>
-        <p className="muted small">Drag a subtitle on the video to place just that line. Or type its position below (0% is the top, 100% is the bottom).</p>
+        <p className="muted small">Drag a subtitle on the video to place just that line, or type its position below (0% is the top). Changes save automatically. Ctrl+S saves, Ctrl+Enter plays or pauses.</p>
         <div className="bar dl"><strong>Download subtitles only</strong>
           <button onClick={dl("ass", toAss, "text/x-ass")} title="Word colours, position and font">ASS (word colours)</button>
           <button onClick={dl("srt", toSrt, "application/x-subrip")}>SRT</button>
@@ -183,8 +236,16 @@ function Editor({project, media, setMedia, onBack}) {
           <button onClick={dl("txt", toTxt, "text/plain")}>Text</button>
           <button onClick={addCue}>Add line at current time</button>
         </div>
+        {isVideo && <div className="bar dl"><strong>Video with subtitles</strong>
+          {burn ? <><progress value={burn.p} max="1"/><span>{Math.round(burn.p * 100)}%</span><button onClick={() => abort.current.abort()}>Stop</button></>
+            : <button onClick={runBurn}>Create video</button>}
+          <span className="muted small">Records in real time, so a 10-minute video takes 10 minutes. Keep this tab open and visible. Chrome or Edge works best.</span></div>}
+        <details className="fr"><summary>Find and replace in all lines</summary>
+          <div className="bar"><input value={fr.a} placeholder="Find" onChange={(e) => setFr({...fr, a: e.target.value, msg: ""})}/>
+            <input value={fr.b} placeholder="Replace with" onChange={(e) => setFr({...fr, b: e.target.value, msg: ""})}/>
+            <button onClick={replaceAll}>Replace all</button>{fr.msg && <span className="note">{fr.msg}</span>}</div></details>
       </section>
-      <ol className="cues">{cues.map((c, i) => <CueRow key={i} c={c} i={i} on={i === active} hasMedia={!!media} font={style.font} defY={style.y} edit={edit} seek={seek} remove={remove}/>)}</ol>
+      <ol className="cues">{cues.map((c, i) => <CueRow key={i} c={c} i={i} on={i === active} hasMedia={!!media} font={style.font} defY={style.y} edit={edit} seek={seek} remove={remove} splitAt={splitAt} merge={merge}/>)}</ol>
     </main>
   );
 }

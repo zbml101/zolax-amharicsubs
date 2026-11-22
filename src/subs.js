@@ -42,3 +42,6 @@ export function download(name, text, type) {
   a.href = URL.createObjectURL(new Blob(["\ufeff" + text], {type: type + ";charset=utf-8"}));
   a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
+export function downloadBlob(name, blob) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
