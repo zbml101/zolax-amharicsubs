@@ -1,5 +1,6 @@
 const p = (n, l = 2) => String(n).padStart(l, "0");
-export const DEF_STYLE = {y: 85, size: 100, font: "Noto Sans Ethiopic", hl: "#ffd23f", base: "#ffffff", bg: true};
+export const DEF_STYLE = {y: 85, size: 100, font: "Noto Sans Ethiopic", hl: "#ffd23f", base: "#ffffff", bg: true, ratio: "original", fit: "crop", focus: 50};
+export const RATIOS = {"9:16": 9 / 16, "16:9": 16 / 9, "1:1": 1, "4:5": 4 / 5};
 export const split = (t) => t.trim().split(/\s+/).filter(Boolean);
 // Word timings of a line. Uses the recognised timings when the words still match the text,
 // otherwise spreads the words over the line by length.
@@ -24,18 +25,21 @@ const karaoke = (x) => { const ws = wordsOf(x); if (!ws.length) return x.text;
   let t = `{\\k${Math.round((ws[0].start - x.start) * 100)}}`;
   ws.forEach((w, i) => { const d = Math.max(0, Math.round(((ws[i + 1] ? ws[i + 1].start : w.end) - w.start) * 100)); t += `{\\k${d}}${w.text}${i < ws.length - 1 ? " " : ""}`; });
   return t; };
-export const toAss = (c, st) => `[Script Info]
+export const toAss = (c, st, vr) => { const r = RATIOS[st.ratio] ?? (vr || 16 / 9);
+  const [w, h] = r >= 1 ? [1920, Math.round(1920 / r)] : [Math.round(1920 * r), 1920];
+  const fs = Math.round((w >= h ? h * 0.056 : w * 0.068) * st.size / 100), m = Math.round(w * 0.05);
+  return `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: ${w}
+PlayResY: ${h}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${st.font},${Math.round(60 * st.size / 100)},${assColor(st.hl)},${assColor(st.base)},${st.bg ? "&H80000000" : "&H00000000"},&H80000000,1,0,0,0,100,100,0,0,${st.bg ? 3 : 1},${st.bg ? 10 : 3},1,5,60,60,60,1
+Style: Default,${st.font},${fs},${assColor(st.hl)},${assColor(st.base)},${st.bg ? "&H80000000" : "&H00000000"},&H80000000,1,0,0,0,100,100,0,0,${st.bg ? 3 : 1},${st.bg ? 10 : 3},1,5,${m},${m},60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-` + c.map((x) => `Dialogue: 0,${ass(x.start)},${ass(x.end)},Default,,0,0,0,,{\\an5\\pos(960,${Math.round(Y(x, st) * 10.8)})}${karaoke(x)}`).join("\n") + "\n";
+` + c.map((x) => `Dialogue: 0,${ass(x.start)},${ass(x.end)},Default,,0,0,0,,{\\an5\\pos(${Math.round(w / 2)},${Math.round(Y(x, st) * h / 100)})}${karaoke(x)}`).join("\n") + "\n"; };
 export const toTxt = (c) => c.map((x) => x.text).join("\n");
 export function download(name, text, type) {
   const a = document.createElement("a");

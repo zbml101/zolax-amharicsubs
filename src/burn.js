@@ -1,8 +1,30 @@
-import {wordsOf} from "./subs";
+import {wordsOf, RATIOS} from "./subs";
+
+// Output frame size for the chosen ratio (long side 1280, square 1080).
+export function outSize(st, vw, vh) {
+  const e = (n) => Math.round(n) & ~1;
+  if (!RATIOS[st.ratio]) { const k = Math.min(1, 1280 / Math.max(vw, vh)); return [e(vw * k), e(vh * k)]; }
+  const r = RATIOS[st.ratio];
+  if (r === 1) return [1080, 1080];
+  return r > 1 ? [1280, e(1280 / r)] : [e(1280 * r), 1280];
+}
+
+// Crop-to-fill, or fit inside the frame over a blurred copy of the video.
+// src = {w, h, draw(ctx, sx, sy, sw, sh, dx, dy, dw, dh)}: a <video> element or a decoded video sample.
+function drawFrame(ctx, src, W, H, st, small) {
+  const vw = src.w, vh = src.h, r = W / H, sr = vw / vh;
+  const cover = (c, dw, dh, f) => { let sw = vw, sh = vh; if (sr > r) sw = vh * r; else sh = vw / r; src.draw(c, (vw - sw) * f, (vh - sh) * f, sw, sh, 0, 0, dw, dh); };
+  if (Math.abs(sr - r) < 0.01 || st.fit !== "blur") { cover(ctx, W, H, (st.focus ?? 50) / 100); return; }
+  const sc = small.getContext("2d"); cover(sc, small.width, small.height, 0.5);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(small, 0, 0, W, H);   // tiny image stretched up = cheap blur
+  ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(0, 0, W, H);
+  const k = Math.min(W / vw, H / vh), dw = vw * k, dh = vh * k;
+  src.draw(ctx, 0, 0, vw, vh, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}
 
 function drawSub(ctx, c, now, st, W, H) {
   const ws = wordsOf(c); if (!ws.length) return;
-  const fs = Math.round(H * 0.055 * st.size / 100);
+  const fs = Math.round((W >= H ? H * 0.056 : W * 0.068) * st.size / 100);
   ctx.font = `700 ${fs}px "${st.font}", serif`; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.lineJoin = "round";
   const space = ctx.measureText(" ").width, maxW = W * 0.9, lines = []; let line = [], lw = 0;
   for (const w of ws) {
@@ -28,13 +50,14 @@ function drawSub(ctx, c, now, st, W, H) {
 }
 
 // Plays the video in the browser and records it with the subtitles drawn on top (real time).
-export async function burnVideo(file, cues, st, onProgress, signal) {
+async function burnRealtime(file, cues, st, onProgress, signal) {
   const v = document.createElement("video");
   v.src = URL.createObjectURL(file); v.playsInline = true; v.preload = "auto";
   const ac = new AudioContext(); const dest = ac.createMediaStreamDestination();
   await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = () => no(new Error("This video cannot be read by the browser.")); });
   await document.fonts.load(`700 40px "${st.font}"`, "ሰላም");
-  const k = Math.min(1, 1280 / v.videoWidth), W = Math.round(v.videoWidth * k) & ~1, H = Math.round(v.videoHeight * k) & ~1;
+  const [W, H] = outSize(st, v.videoWidth, v.videoHeight);
+  const small = document.createElement("canvas"); small.width = Math.max(8, Math.round(W / 24)); small.height = Math.max(8, Math.round(H / 24));
   const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
   ac.createMediaElementSource(v).connect(dest);   // audio goes to the recording only, not the speakers
@@ -46,7 +69,7 @@ export async function burnVideo(file, cues, st, onProgress, signal) {
   const stopped = new Promise((r) => { rec.onstop = r; });
   let raf, lastPct = -1;
   const draw = () => {
-    ctx.drawImage(v, 0, 0, W, H);
+    drawFrame(ctx, {w: v.videoWidth, h: v.videoHeight, draw: (c, ...a) => c.drawImage(v, ...a)}, W, H, st, small);
     const t = v.currentTime, c = cues.find((x) => t >= x.start && t < x.end);
     if (c) drawSub(ctx, c, t, st, W, H);
     const pct = Math.floor(t / v.duration * 100); if (pct !== lastPct) { lastPct = pct; onProgress(pct / 100); }
@@ -59,4 +82,41 @@ export async function burnVideo(file, cues, st, onProgress, signal) {
     cancelAnimationFrame(raf); if (rec.state !== "inactive") rec.stop(); await stopped; v.pause(); URL.revokeObjectURL(v.src); ac.close();
   }
   return signal.aborted ? null : {blob: new Blob(parts, {type: mime.split(";")[0]}), ext: mime.startsWith("video/mp4") ? "mp4" : "webm"};
+}
+
+// Fast path: decode, draw the subtitles on every frame and re-encode with the browser's
+// hardware video codecs (WebCodecs). Runs faster than the video's length. Audio is copied when possible.
+async function burnFast(file, cues, st, onProgress, signal) {
+  const {ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output, QUALITY_HIGH} = await import("mediabunny");   // loaded only when exporting
+  await document.fonts.load(`700 40px "${st.font}"`, "ሰላም");
+  const input = new Input({source: new BlobSource(file), formats: ALL_FORMATS});
+  const vt = await input.getPrimaryVideoTrack();
+  if (!vt) throw new Error("No video track found.");
+  const [W, H] = outSize(st, await vt.getDisplayWidth(), await vt.getDisplayHeight());
+  const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  const small = document.createElement("canvas"); small.width = Math.max(8, Math.round(W / 24)); small.height = Math.max(8, Math.round(H / 24));
+  const output = new Output({format: new Mp4OutputFormat(), target: new BufferTarget()});
+  const conv = await Conversion.init({input, output, video: {
+    forceTranscode: true, quality: QUALITY_HIGH, processedWidth: W, processedHeight: H,
+    process: (s) => {
+      drawFrame(ctx, {w: s.displayWidth, h: s.displayHeight, draw: (c, ...a) => s.draw(c, ...a)}, W, H, st, small);
+      const t = s.timestamp, c = cues.find((x) => t >= x.start && t < x.end);
+      if (c) drawSub(ctx, c, t, st, W, H);
+      return canvas;
+    }}});
+  if (!conv.isValid) throw new Error("fast mode not supported for this video");
+  conv.onProgress = (p) => onProgress(p);
+  const stop = () => conv.cancel(); signal.addEventListener("abort", stop);
+  try { await conv.execute(); } catch (e) { if (signal.aborted) return null; throw e; } finally { signal.removeEventListener("abort", stop); }
+  return {blob: new Blob([output.target.buffer], {type: "video/mp4"}), ext: "mp4"};
+}
+
+export async function burnVideo(file, cues, st, onProgress, signal, onMode = () => {}) {
+  if (typeof VideoEncoder !== "undefined" && typeof VideoDecoder !== "undefined") {
+    try { onMode("fast"); return await burnFast(file, cues, st, onProgress, signal); }
+    catch (e) { if (signal.aborted) return null; console.warn("Fast export failed, using real-time mode:", e); }
+  }
+  onMode("slow");
+  return burnRealtime(file, cues, st, onProgress, signal);
 }

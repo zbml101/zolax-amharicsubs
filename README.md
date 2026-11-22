@@ -34,6 +34,7 @@ git remote add origin git@github.com:YOU/amharic-subs.git && git push -u origin 
 4. Custom domains > Set up a domain. If DNS is already on Cloudflare, records are created for you.
 
 ## Notes
+- Video size: convert to 9:16, 16:9, 1:1 or 4:5 (crop to fill with an adjustable crop position, or fit over a blurred background). Subtitle size and position adapt to the chosen shape, in the preview, the exported video and the ASS file.
 - Editor: karaoke word colours, font/colour/position controls, split and merge lines, find and replace, autosave, and project delete.
 - "Create video" records the preview in the browser (real time) and downloads an MP4 or WebM with the subtitles burned in. No server needed.
 - Downloads: SRT (top/middle/bottom only), VTT and ASS (exact position), Text.
